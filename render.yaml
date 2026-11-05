@@ -1,0 +1,11 @@
+# Render.com Blueprint (Infrastructure-as-Code)
+services:
+  - type: web
+    name: steam-xray-analytics
+    runtime: docker
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.8

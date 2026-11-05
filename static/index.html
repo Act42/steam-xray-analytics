@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SteamXRay — Live Game & Studio OSINT Intelligence</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0b0f19;
+      color: #e2e8f0;
+    }
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .glass {
+      background: rgba(17, 24, 39, 0.82);
+      backdrop-filter: blur(14px);
+      border: 1px solid rgba(56, 189, 248, 0.15);
+    }
+    .glass-card {
+      background: rgba(15, 23, 42, 0.86);
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      transition: all 0.2s ease;
+    }
+    .glass-card:hover {
+      border-color: rgba(56, 189, 248, 0.45);
+      transform: translateY(-1px);
+      box-shadow: 0 10px 25px -5px rgba(14, 165, 233, 0.15);
+    }
+    .pulse-dot {
+      animation: pulse-ring 1.8s infinite;
+    }
+    @keyframes pulse-ring {
+      0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #0b0f19; }
+    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #38bdf8; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-sky-500 selection:text-white">
+
+  <!-- Top Navigation & Search Header -->
+  <header class="sticky top-0 z-40 glass border-b border-slate-800/80">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-col md:flex-row items-center justify-between gap-3">
+      <!-- Brand -->
+      <div class="flex items-center gap-3 shrink-0">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/25 font-extrabold text-white text-lg mono">
+          SX
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg font-extrabold tracking-tight text-white">Steam<span class="text-sky-400">XRay</span></h1>
+            <span class="text-[11px] mono uppercase px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30">OSINT v2.0</span>
+          </div>
+          <p id="uiSubtitle" class="text-xs text-slate-400">Live Steam Telemetry, Studio Country OSINT, Localization & Price Radar</p>
+        </div>
+      </div>
+
+      <!-- Search Box -->
+      <div class="relative w-full md:w-[430px]">
+        <div class="flex items-center bg-slate-900/90 border border-slate-700/80 rounded-xl overflow-hidden focus-within:border-sky-400 focus-within:ring-1 focus-within:ring-sky-400/50">
+          <input
+            id="searchInput"
+            type="text"
+            placeholder="Search any Steam game (e.g. Stalker 2, Cyberpunk, Witcher 3)..."
+            class="w-full bg-transparent px-4 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none min-w-0"
+            autocomplete="off"
+          />
+          <button
+            id="searchBtn"
+            class="px-4 py-2.5 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs uppercase tracking-wider transition shrink-0"
+          >
+            Search
+          </button>
+        </div>
+        <!-- Search Dropdown Results -->
+        <div id="searchDropdown" class="hidden absolute left-0 right-0 mt-1.5 glass rounded-xl shadow-2xl border border-slate-700/80 max-h-96 overflow-y-auto z-50"></div>
+      </div>
+
+      <!-- Right Controls: Language Switcher + Telemetry + Swagger Link -->
+      <div class="flex items-center gap-2 shrink-0">
+        <!-- Bilingual Switcher (EN / UA) -->
+        <div class="flex items-center bg-slate-900 p-0.5 rounded-lg border border-slate-700/80">
+          <button
+            id="langEnBtn"
+            onclick="setLanguage('en')"
+            class="px-2.5 py-1 rounded-md text-xs font-bold transition bg-sky-500 text-slate-950"
+          >
+            EN
+          </button>
+          <button
+            id="langUkBtn"
+            onclick="setLanguage('uk')"
+            class="px-2.5 py-1 rounded-md text-xs font-bold transition text-slate-400 hover:text-white"
+          >
+            🇺🇦 UA
+          </button>
+        </div>
+
+        <div id="latencyBadge" class="text-xs mono px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hidden sm:block">
+          API: <span class="text-emerald-400 font-semibold">-- ms</span>
+        </div>
+        <a
+          href="/docs"
+          target="_blank"
+          class="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 transition"
+        >
+          /API
+        </a>
+      </div>
+    </div>
+
+    <!-- Trending Quick-Select Bar -->
+    <div class="border-t border-slate-800/60 bg-slate-950/60">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 py-2 flex items-center gap-2 overflow-x-auto">
+        <span id="lblQuickXray" class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 shrink-0 mr-1">Quick X-Ray:</span>
+        <div id="trendingBar" class="flex items-center gap-1.5"></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Loading Overlay -->
+  <div id="loadingIndicator" class="hidden fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center">
+    <div class="glass px-6 py-5 rounded-2xl flex items-center gap-4 border border-sky-500/30 shadow-2xl max-w-md">
+      <div class="w-6 h-6 border-2 border-sky-400 border-t-transparent rounded-full animate-spin shrink-0"></div>
+      <div>
+        <div id="lblLoadingTitle" class="text-sm font-bold text-white">Scanning Steam, Wikidata & CheapShark APIs...</div>
+        <div id="lblLoadingSub" class="text-xs text-slate-400">Aggregating live players, developer/publisher country OSINT & localization</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Content Container -->
+  <main class="max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 space-y-6 flex-1">
+
+    <!-- Hero Game X-Ray Header -->
+    <section id="heroSection" class="relative rounded-2xl overflow-hidden border border-slate-800 shadow-2xl bg-slate-900">
+      <div id="heroBg" class="absolute inset-0 bg-cover bg-center opacity-20 blur-sm scale-105 transition-all duration-500"></div>
+      <div class="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/90 to-slate-900/75"></div>
+
+      <div class="relative p-5 sm:p-7 flex flex-col lg:flex-row gap-6 items-start lg:items-center justify-between">
+        <!-- Left: Poster + Metadata -->
+        <div class="flex flex-col sm:flex-row gap-5 items-start sm:items-center flex-1 min-w-0">
+          <img
+            id="gameHeaderImg"
+            src=""
+            alt="Game Cover"
+            class="w-full sm:w-64 rounded-xl border border-slate-700/80 shadow-xl object-cover shrink-0"
+          />
+          <div class="space-y-2.5 min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <span id="gameAppIdBadge" class="text-xs mono px-2.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">AppID: --</span>
+              <span id="gameReleaseDate" class="text-xs text-slate-400">--</span>
+              <div id="genreBadges" class="flex flex-wrap gap-1.5"></div>
+            </div>
+
+            <h2 id="gameTitle" class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight truncate">Loading...</h2>
+            <p id="gameShortDesc" class="text-sm text-slate-300 leading-relaxed line-clamp-3"></p>
+
+            <!-- Quick Studio Origin Pills in Hero -->
+            <div class="pt-1 flex flex-wrap items-center gap-3 text-xs">
+              <div class="px-2.5 py-1 rounded-lg bg-slate-900/90 border border-slate-700/80 flex items-center gap-1.5">
+                <span id="lblHeroDev" class="text-slate-400">Developer:</span>
+                <span id="heroDevFlag" class="text-sm">🌐</span>
+                <span id="gameDevelopers" class="font-bold text-sky-300"></span>
+                <span id="heroDevCountry" class="text-[11px] text-slate-400"></span>
+              </div>
+              <div class="px-2.5 py-1 rounded-lg bg-slate-900/90 border border-slate-700/80 flex items-center gap-1.5">
+                <span id="lblHeroPub" class="text-slate-400">Publisher:</span>
+                <span id="heroPubFlag" class="text-sm">🌐</span>
+                <span id="gamePublishers" class="font-semibold text-indigo-300"></span>
+                <span id="heroPubCountry" class="text-[11px] text-slate-400"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Live Concurrent Players + Price + Store Link -->
+        <div class="w-full lg:w-64 flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0 bg-slate-950/85 p-4 rounded-xl border border-slate-800/90">
+          <!-- Live Players Counter -->
+          <div class="flex items-center gap-3 px-3.5 py-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/30 flex-1">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-dot shrink-0"></span>
+            <div class="min-w-0">
+              <div id="lblLivePlayers" class="text-[10px] font-bold uppercase tracking-wider text-emerald-300 truncate">Live Players Now</div>
+              <div id="livePlayersCount" class="text-xl font-extrabold text-white mono">--</div>
+            </div>
+          </div>
+
+          <!-- Regional Price & Store Link -->
+          <div class="flex items-center justify-between gap-2 px-3.5 py-2 rounded-lg bg-slate-900 border border-slate-800 flex-1">
+            <div class="min-w-0">
+              <div id="lblSteamPrice" class="text-[10px] uppercase tracking-wider text-slate-400 truncate">Steam UA Price</div>
+              <div class="flex items-center gap-1.5">
+                <span id="gamePrice" class="text-lg font-bold text-white mono truncate">--</span>
+                <span id="gameDiscountBadge" class="hidden text-xs font-bold px-1.5 py-0.5 rounded bg-emerald-500 text-slate-950 mono"></span>
+              </div>
+            </div>
+            <a
+              id="steamStoreLink"
+              href="#"
+              target="_blank"
+              class="px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs transition shrink-0"
+            >
+              Steam ↗
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4 Diagnostic KPI Cards (Verdict, Approval, Ukrainian Localization, Historical Price Low & Playtime) -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- KPI 1: Verdict & Overall Score -->
+      <div class="glass-card rounded-xl p-4 flex flex-col justify-between space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <span id="lblKpiVerdict" class="text-xs font-semibold uppercase tracking-wider text-slate-400 truncate">X-Ray Verdict</span>
+          <span id="verdictBadge" class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 truncate">--</span>
+        </div>
+        <div class="flex items-baseline gap-2">
+          <span id="overallScoreVal" class="text-3xl font-extrabold text-white mono">--</span>
+          <span id="lblCompositeIndex" class="text-xs text-slate-400">/ 100 Index</span>
+        </div>
+        <p id="verdictReason" class="text-xs text-slate-300 leading-relaxed line-clamp-3"></p>
+      </div>
+
+      <!-- KPI 2: Community Approval & Wilson Score -->
+      <div class="glass-card rounded-xl p-4 flex flex-col justify-between space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <span id="lblKpiApproval" class="text-xs font-semibold uppercase tracking-wider text-slate-400 truncate">Community Rating</span>
+          <span id="wilsonBadge" class="text-[11px] mono text-sky-300 shrink-0">Wilson: --%</span>
+        </div>
+        <div class="flex items-baseline gap-2">
+          <span id="approvalPctVal" class="text-3xl font-extrabold text-emerald-400 mono">--%</span>
+          <span id="totalReviewsVal" class="text-xs text-slate-400 truncate">(--)</span>
+        </div>
+        <div class="w-full h-2 bg-rose-950 rounded-full overflow-hidden">
+          <div id="approvalBar" class="h-full bg-emerald-400 transition-all duration-500" style="width: 85%"></div>
+        </div>
+        <div class="flex justify-between text-[11px] text-slate-400 mono">
+          <span id="posReviewsVal">+0</span>
+          <span id="negReviewsVal">-0</span>
+        </div>
+      </div>
+
+      <!-- KPI 3: Ukrainian Localization & Language Support -->
+      <div class="glass-card rounded-xl p-4 flex flex-col justify-between space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <span id="lblKpiLocalization" class="text-xs font-semibold uppercase tracking-wider text-slate-400 truncate">Localization Check</span>
+          <span id="totalLangsBadge" class="text-[11px] mono px-2 py-0.5 rounded bg-slate-800 text-sky-300 shrink-0">-- langs</span>
+        </div>
+        <div id="uaStatusBox" class="p-2.5 rounded-lg border flex items-center gap-2.5">
+          <span id="uaStatusIcon" class="text-xl shrink-0">🇺🇦</span>
+          <div class="min-w-0">
+            <div id="uaStatusLabel" class="text-xs font-bold leading-snug">--</div>
+            <div id="uaAudioSub" class="text-[11px] text-slate-400 truncate">--</div>
+          </div>
+        </div>
+        <div id="audioLangsList" class="text-[11px] text-slate-400 line-clamp-2"></div>
+      </div>
+
+      <!-- KPI 4: Historical Lowest Price (CheapShark) & Playtime Value -->
+      <div class="glass-card rounded-xl p-4 flex flex-col justify-between space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <span id="lblKpiPriceHistory" class="text-xs font-semibold uppercase tracking-wider text-slate-400 truncate">Price History & Value</span>
+          <span id="costPerHourBadge" class="text-[11px] mono px-2 py-0.5 rounded bg-slate-800 text-amber-300 shrink-0">--</span>
+        </div>
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <div class="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+            <div id="lblLowestEver" class="text-[10px] text-slate-400 truncate">All-Time Low</div>
+            <div id="cheapestEverVal" class="font-bold text-emerald-400 mono truncate">--</div>
+            <div id="cheapestDateVal" class="text-[10px] text-slate-500 mono truncate">--</div>
+          </div>
+          <div class="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+            <div id="lblAvgPlaytime" class="text-[10px] text-slate-400 truncate">Avg Playtime</div>
+            <div id="avgPlaytimeVal" class="font-bold text-sky-300 mono truncate">-- hrs</div>
+            <div id="ownersShortVal" class="text-[10px] text-slate-500 mono truncate">--</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- NEW FEATURE: Developer & Publisher Intelligence Dossier (Wikidata + Wikipedia OSINT) -->
+    <section class="space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div>
+          <h3 class="text-lg font-extrabold text-white flex items-center gap-2">
+            <span id="lblStudioIntelTitle">🕵️‍♂️ Developer & Publisher OSINT Intelligence</span>
+            <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30 mono">Wikidata + Wikipedia Live</span>
+          </h3>
+          <p id="lblStudioIntelSub" class="text-xs text-slate-400">
+            Verified country of origin, headquarters city, founding year, parent organization, and corporate biography.
+          </p>
+        </div>
+      </div>
+
+      <!-- 2-Column Dossier Grid: Developer Card + Publisher Card -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <!-- Developer Dossier Card -->
+        <div id="devIntelCard" class="glass-card rounded-2xl p-5 flex flex-col justify-between space-y-4 border-l-4 border-l-sky-500"></div>
+
+        <!-- Publisher Dossier Card -->
+        <div id="pubIntelCard" class="glass-card rounded-2xl p-5 flex flex-col justify-between space-y-4 border-l-4 border-l-indigo-500"></div>
+      </div>
+
+      <!-- Studio Game Portfolios (Developer's Other Games & Publisher's Other Games) -->
+      <div class="glass-card rounded-2xl p-5 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+          <div class="flex items-center gap-2">
+            <button
+              id="tabDevGamesBtn"
+              onclick="switchPortfolioTab('dev')"
+              class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-sky-500 text-slate-950"
+            >
+              🎮 Developer's Other Games
+            </button>
+            <button
+              id="tabPubGamesBtn"
+              onclick="switchPortfolioTab('pub')"
+              class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-slate-900 text-slate-300 hover:text-white border border-slate-800"
+            >
+              🏢 Publisher's Other Games
+            </button>
+          </div>
+          <span id="portfolioStudioName" class="text-xs font-semibold text-sky-300 mono"></span>
+        </div>
+
+        <div id="companyGamesGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5"></div>
+      </div>
+    </section>
+
+    <!-- Tag DNA Chart + Screenshots / Media Gallery -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <!-- Tag DNA Profile (7 cols) -->
+      <div class="lg:col-span-7 glass-card rounded-2xl p-5 flex flex-col justify-between">
+        <div class="flex items-center justify-between mb-3 gap-2">
+          <div>
+            <h3 id="lblTagDnaTitle" class="text-base font-bold text-white">Game Tag-DNA Vector Profile</h3>
+            <p id="lblTagDnaSub" class="text-xs text-slate-400">Normalized community tag weights from SteamSpy</p>
+          </div>
+          <span id="metacriticBadge" class="text-xs font-extrabold px-2.5 py-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 mono shrink-0">Metacritic: --</span>
+        </div>
+        <div class="relative h-72 w-full">
+          <canvas id="tagDnaChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Media Gallery: Screenshots (5 cols) -->
+      <div class="lg:col-span-5 glass-card rounded-2xl p-5 flex flex-col justify-between space-y-3">
+        <div>
+          <h3 id="lblMediaTitle" class="text-base font-bold text-white">Visual Inspection & System Specs</h3>
+          <p id="pcReqsVal" class="text-[11px] text-slate-400 line-clamp-2 mt-0.5"></p>
+        </div>
+        <div class="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-800 aspect-video flex items-center justify-center">
+          <img id="activeScreenshot" src="" alt="Screenshot" class="w-full h-full object-cover" />
+        </div>
+        <div id="screenshotThumbs" class="grid grid-cols-5 gap-2"></div>
+      </div>
+    </section>
+
+    <!-- Head-to-Head VS Comparison Section -->
+    <section id="compareSection" class="glass rounded-2xl p-6 border border-sky-500/30 space-y-5">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+        <div>
+          <h3 class="text-lg font-extrabold text-white flex items-center gap-2">
+            <span id="lblVsTitle">⚔️ Head-to-Head Game Comparison (VS Mode)</span>
+            <span id="vsOverlapBadge" class="text-xs mono px-2.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">DNA Overlap: --%</span>
+          </h3>
+          <p id="vsWinnerSummary" class="text-xs text-slate-300 mt-1"></p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <select id="vsSelectGameB" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-sky-400"></select>
+          <button id="runCompareBtn" class="px-3.5 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-xs transition shrink-0">
+            Compare
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+        <!-- Side-by-side table (7 cols) -->
+        <div id="vsTableContainer" class="lg:col-span-7 overflow-x-auto"></div>
+        <!-- Dual Radar Chart (5 cols) -->
+        <div class="lg:col-span-5 h-72 relative">
+          <canvas id="vsRadarChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer id="uiFooter" class="border-t border-slate-800/80 py-5 mt-10 text-center text-xs text-slate-500">
+    SteamXRay Analytics v2.0 — Powered by FastAPI, Steam Store API, Wikidata/Wikipedia Studio OSINT, CheapShark & SteamSpy.
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
